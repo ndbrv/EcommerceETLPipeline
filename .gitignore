@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.python-version
+
+# Data files (don't commit large data files)
+data/raw/*
+data/staging/*
+data/processed/*
+data/source/*
+*.parquet
+*.csv
+
+# But keep the folders
+!data/raw/.gitkeep
+!data/staging/.gitkeep
+!data/processed/.gitkeep
+!data/source/.gitkeep
+
+# Environment variables
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Airflow
+airflow/logs/
+airflow/*.db
+
+# dbt
+ecommerce_transform/target/
+ecommerce_transform/logs/
+ecommerce_transform/dbt_packages/
+.dbt/
+profiles.yml

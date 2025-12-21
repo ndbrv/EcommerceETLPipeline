@@ -1,0 +1,107 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw layer - unprocessed data from source systems
+    database: ecommerce_dw
+    schema: raw
+    tables:
+      - name: products
+        description: Products from DummyJSON API
+        columns:
+          - name: product_id
+            description: Unique product identifier
+            tests:
+              - not_null
+              - unique
+          - name: product_name
+            description: Product name
+          - name: price
+            description: Product price
+          - name: loaded_at
+            description: Timestamp when loaded into warehouse
+      
+      - name: customers
+        description: Generated customer data
+        columns:
+          - name: customer_id
+            description: Unique customer identifier
+            tests:
+              - not_null
+              - unique
+          - name: email
+            description: Customer email
+            tests:
+              - not_null
+          - name: first_name
+            description: Customer first name
+          - name: last_name
+            description: Customer last name
+      
+      - name: transactions
+        description: Generated transaction data
+        columns:
+          - name: transaction_id
+            description: Unique transaction identifier
+            tests:
+              - not_null
+              - unique
+          - name: order_id
+            description: Order identifier
+          - name: customer_id
+            description: Foreign key to customers
+            tests:
+              - not_null
+
+models:
+  - name: stg_products
+    description: Cleaned and typed product data from raw layer
+    columns:
+      - name: product_id
+        description: Unique product identifier
+        tests:
+          - not_null
+          - unique
+      - name: product_name
+        description: Product name
+        tests:
+          - not_null
+      - name: price
+        description: Product price (decimal)
+        tests:
+          - not_null
+  
+  - name: stg_customers
+    description: Cleaned and typed customer data from raw layer
+    columns:
+      - name: customer_id
+        description: Unique customer identifier
+        tests:
+          - not_null
+          - unique
+      - name: email
+        description: Customer email address
+        tests:
+          - not_null
+      - name: full_name
+        description: Customer full name (concatenated)
+  
+  - name: stg_transactions
+    description: Cleaned and typed transaction data from raw layer
+    columns:
+      - name: transaction_id
+        description: Unique transaction identifier
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: Order identifier
+        tests:
+          - not_null
+      - name: customer_id
+        description: Foreign key to customers
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
