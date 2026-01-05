@@ -1,0 +1,227 @@
+version: 2
+
+models:
+  - name: transform_customers
+    description: "Transformed customer dimension with derived attributes and customer segmentation"
+    columns:
+      - name: source_customer_id
+        description: "Customer ID from source system"
+        tests:
+          - unique
+          - not_null
+      - name: full_name
+        description: "Full name (first + last)"
+      - name: email
+        description: "Customer email address"
+        tests:
+          - not_null
+      - name: age
+        description: "Calculated age in years"
+      - name: age_group
+        description: "Age segmentation bucket"
+      - name: customer_tenure
+        description: "Customer lifecycle stage based on registration date"
+      - name: activity_status
+        description: "Activity level based on last login date"
+      - name: verification_status
+        description: "Account verification status"
+      - name: is_fully_verified
+        description: "Boolean flag for fully verified accounts"
+
+  - name: transform_products
+    description: "Transformed product dimension with pricing logic and categorization"
+    columns:
+      - name: source_product_id
+        description: "Product ID from source system"
+        tests:
+          - unique
+          - not_null
+      - name: product_name
+        description: "Product name"
+      - name: brand
+        description: "Product brand"
+      - name: category
+        description: "Product category"
+      - name: price
+        description: "Original product price"
+      - name: discounted_price
+        description: "Price after applying discount percentage"
+      - name: discount_amount
+        description: "Dollar amount of discount"
+      - name: rating_category
+        description: "Categorical rating (Excellent, Very Good, etc.)"
+      - name: stock_level
+        description: "Stock availability category"
+      - name: price_category
+        description: "Price tier categorization"
+      - name: is_on_sale
+        description: "Boolean flag indicating if product has a discount"
+      - name: is_available
+        description: "Boolean flag for product availability"
+
+  - name: transform_orders
+    description: "Transformed orders fact table with order metrics and derived attributes"
+    columns:
+      - name: source_order_id
+        description: "Order ID from source system"
+        tests:
+          - unique
+          - not_null
+      - name: source_customer_id
+        description: "Customer who placed the order"
+        tests:
+          - not_null
+      - name: order_date
+        description: "Date and time when order was placed"
+        tests:
+          - not_null
+      - name: order_status
+        description: "Current status of the order"
+      - name: order_status_category
+        description: "High-level categorization of order status"
+      - name: is_fulfilled
+        description: "Boolean flag for completed/delivered orders"
+      - name: is_terminated
+        description: "Boolean flag for cancelled/refunded orders"
+      - name: total_amount
+        description: "Total order amount from source"
+        tests:
+          - not_null
+      - name: calculated_order_total
+        description: "Sum of order items for validation"
+      - name: amount_variance
+        description: "Difference between reported and calculated totals"
+      - name: has_amount_discrepancy
+        description: "Boolean flag for orders with amount mismatches"
+      - name: item_count
+        description: "Number of distinct items in order"
+      - name: total_items_quantity
+        description: "Total quantity of all items"
+      - name: order_size
+        description: "Order size category based on amount"
+      - name: order_complexity
+        description: "Order complexity based on item count"
+      - name: transaction_count
+        description: "Number of transactions for this order"
+      - name: total_payments
+        description: "Sum of all payment transactions"
+      - name: total_refunds
+        description: "Sum of all refund transactions"
+      - name: net_transaction_amount
+        description: "Net transaction amount (payments - refunds)"
+      - name: has_multiple_transactions
+        description: "Boolean flag for orders with multiple transactions"
+      - name: has_refunds
+        description: "Boolean flag for orders with refunds"
+      - name: has_failed_transactions
+        description: "Boolean flag for orders with failed/declined transactions"
+      - name: payment_status
+        description: "Payment status category"
+      - name: days_since_order
+        description: "Days elapsed since order was placed"
+      - name: weekday_weekend
+        description: "Whether order was placed on weekday or weekend"
+
+  - name: transform_order_items
+    description: "Transformed order items with product enrichment and contribution metrics"
+    columns:
+      - name: source_order_item_id
+        description: "Order item ID from source system"
+        tests:
+          - unique
+          - not_null
+      - name: source_order_id
+        description: "Associated order ID"
+        tests:
+          - not_null
+      - name: source_product_id
+        description: "Associated product ID"
+        tests:
+          - not_null
+      - name: customer_id
+        description: "Customer who placed the order"
+      - name: product_name
+        description: "Product name from product dimension"
+      - name: brand
+        description: "Product brand from product dimension"
+      - name: category
+        description: "Product category from product dimension"
+      - name: quantity
+        description: "Quantity ordered"
+      - name: unit_price
+        description: "Price per unit at time of order"
+      - name: total_price
+        description: "Total price for line item"
+      - name: current_product_price
+        description: "Current price of product (for comparison)"
+      - name: discount_vs_current_price
+        description: "Discount amount compared to current price"
+      - name: was_discounted
+        description: "Boolean flag if item was purchased at discount"
+      - name: item_revenue
+        description: "Revenue generated by this line item"
+      - name: percent_of_order_total
+        description: "Percentage of order total this item represents"
+      - name: quantity_category
+        description: "Categorization of quantity purchased"
+      - name: price_tier
+        description: "Price tier of the item"
+      - name: exceeds_minimum_order
+        description: "Boolean flag if quantity exceeds minimum order quantity"
+
+  - name: transform_transactions
+    description: "Transformed payment transactions with order enrichment and timing metrics"
+    columns:
+      - name: source_transaction_id
+        description: "Transaction ID from source system"
+        tests:
+          - unique
+          - not_null
+      - name: source_order_id
+        description: "Associated order ID"
+        tests:
+          - not_null
+      - name: customer_id
+        description: "Customer who made the transaction"
+      - name: transaction_type
+        description: "Type of transaction (payment or refund)"
+      - name: transaction_status
+        description: "Status of transaction (approved, pending, failed, etc.)"
+      - name: transaction_date
+        description: "Date and time of transaction"
+        tests:
+          - not_null
+      - name: transaction_amount
+        description: "Transaction amount"
+        tests:
+          - not_null
+      - name: payment_method
+        description: "Payment method used"
+      - name: payment_processor
+        description: "Payment processor name"
+      - name: transaction_status_category
+        description: "High-level status category"
+      - name: is_successful
+        description: "Boolean flag for approved transactions"
+      - name: is_failed
+        description: "Boolean flag for failed/declined transactions"
+      - name: is_payment
+        description: "Boolean flag for payment transactions"
+      - name: is_refund
+        description: "Boolean flag for refund transactions"
+      - name: signed_amount
+        description: "Transaction amount with direction (negative for refunds)"
+      - name: transaction_timing
+        description: "Categorization of time from order to transaction"
+      - name: minutes_from_order_to_transaction
+        description: "Minutes between order and transaction"
+      - name: hours_from_order_to_transaction
+        description: "Hours between order and transaction"
+      - name: days_from_order_to_transaction
+        description: "Days between order and transaction"
+      - name: transaction_size
+        description: "Size category based on transaction amount"
+      - name: transaction_month
+        description: "Month of transaction for aggregations"
+      - name: transaction_week
+        description: "Week of transaction for aggregations"

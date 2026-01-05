@@ -6,13 +6,14 @@
 }}
 
 WITH raw AS (
-    SELECT * FROM {{ source('raw', 'customers') }}
+    SELECT * FROM {{ source('raw', 'raw_customers') }}
 ),
 
 cleaned AS (
     SELECT
         -- Primary Key
-        customer_id,
+        id,
+        source_customer_id,
         
         -- Personal Information
         first_name,
@@ -49,8 +50,6 @@ cleaned AS (
         source AS source_system
         
     FROM raw
-    WHERE customer_id IS NOT NULL
-      AND email IS NOT NULL
 )
 
 SELECT * FROM cleaned

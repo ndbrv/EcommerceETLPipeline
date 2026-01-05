@@ -8,6 +8,12 @@ version: '1.0.0'
 # This setting configures which "profile" dbt uses for this project.
 profile: 'ecommerce_transform'
 
+# Quote all identifiers to preserve case sensitivity in Snowflake
+quoting:
+  database: false
+  schema: false
+  identifier: true
+
 # These configurations specify where dbt should look for different types of files.
 # The `model-paths` config, for example, states that models in this project can be
 # found in the "models/" directory. You probably won't need to change these!
@@ -31,6 +37,17 @@ clean-targets:         # directories to be removed by `dbt clean`
 # files using the `{{ config(...) }}` macro.
 models:
   ecommerce_transform:
-    # Config indicated by + and applies to all files under models/example/
-    example:
-      +materialized: view
+    # Staging models go to STAGING schema
+    staging:
+      +materialized: table
+      +schema: staging
+    
+    # Transformation models go to TRANSFORM schema
+    transformation:
+      +materialized: table
+      +schema: transform
+    
+    # Curated models (marts) go to ANALYTICS schema
+    curated:
+      +materialized: table
+      +schema: curated

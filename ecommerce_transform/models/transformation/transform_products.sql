@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        tags=['intermediate', 'products']
+        tags=['transform', 'products']
     )
 }}
 
@@ -12,7 +12,7 @@ WITH products AS (
 transformed AS (
     SELECT
         -- IDs
-        product_id,
+        source_product_id,
         
         -- Product Info
         product_name,

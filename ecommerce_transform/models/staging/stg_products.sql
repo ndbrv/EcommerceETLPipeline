@@ -6,13 +6,14 @@
 }}
 
 WITH raw AS (
-    SELECT * FROM {{ source('raw', 'products') }}
+    SELECT * FROM {{ source('raw', 'raw_products') }}
 ),
 
 cleaned AS (
     SELECT
         -- Primary Key
-        product_id,
+        id,
+        source_product_id,
         
         -- Product Information
         product_name,
@@ -62,8 +63,6 @@ cleaned AS (
         source AS source_system
         
     FROM raw
-    WHERE product_id IS NOT NULL
-      AND product_name IS NOT NULL
 )
 
 SELECT * FROM cleaned

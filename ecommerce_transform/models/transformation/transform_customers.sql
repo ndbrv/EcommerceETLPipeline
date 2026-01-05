@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        tags=['intermediate', 'customers']
+        tags=['transform', 'customers']
     )
 }}
 
@@ -12,7 +12,8 @@ WITH customers AS (
 transformed AS (
     SELECT
         -- IDs
-        customer_id,
+        id,
+        source_customer_id,
         
         -- Personal Info
         first_name,

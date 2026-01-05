@@ -1,7 +1,7 @@
 {{
     config(
         materialized='table',
-        tags=['intermediate', 'transactions']
+        tags=['transform', 'transactions']
     )
 }}
 
@@ -9,132 +9,98 @@ WITH transactions AS (
     SELECT * FROM {{ ref('stg_transactions') }}
 ),
 
-enriched AS (
+orders AS (
+    SELECT * FROM {{ ref('transform_orders') }}
+),
+
+transformed AS (
     SELECT
         -- IDs
-        transaction_id,
-        order_id,
-        customer_id,
+        t.source_transaction_id,
+        t.source_order_id,
         
-        -- Date/Time
-        order_date,
-        order_date_key,
+        -- Enrich with order info
+        o.source_customer_id,
+        o.order_date,
+        o.order_status,
+        o.total_amount AS order_total_amount,
         
-        -- BUSINESS LOGIC: Date/Time extractions
-        EXTRACT(YEAR FROM order_date) AS order_year,
-        EXTRACT(MONTH FROM order_date) AS order_month,
-        EXTRACT(DAY FROM order_date) AS order_day,
-        EXTRACT(HOUR FROM order_date) AS order_hour,
-        EXTRACT(DAYOFWEEK FROM order_date) AS day_of_week_num,
-        DAYNAME(order_date) AS day_name,
-        MONTHNAME(order_date) AS month_name,
-        QUARTER(order_date) AS quarter,
+        -- Transaction Details
+        t.transaction_type,
+        t.transaction_status,
+        t.transaction_date,
+        t.transaction_amount,
         
-        -- BUSINESS LOGIC: Time of day categories
+        -- Payment Details
+        t.payment_method,
+        t.payment_processor,
+        t.processor_transaction_id,
+        t.card_last_four,
+        
+        -- Transaction Status Categories
         CASE 
-            WHEN EXTRACT(HOUR FROM order_date) BETWEEN 0 AND 5 THEN 'Night'
-            WHEN EXTRACT(HOUR FROM order_date) BETWEEN 6 AND 11 THEN 'Morning'
-            WHEN EXTRACT(HOUR FROM order_date) BETWEEN 12 AND 17 THEN 'Afternoon'
-            WHEN EXTRACT(HOUR FROM order_date) BETWEEN 18 AND 21 THEN 'Evening'
-            ELSE 'Late Night'
-        END AS time_of_day,
-        
-        -- BUSINESS LOGIC: Weekend/weekday
-        CASE 
-            WHEN DAYOFWEEK(order_date) IN (0, 6) THEN TRUE 
-            ELSE FALSE 
-        END AS is_weekend,
+            WHEN t.transaction_status = 'approved' THEN 'Successful'
+            WHEN t.transaction_status IN ('processing', 'pending') THEN 'In Progress'
+            WHEN t.transaction_status IN ('failed', 'declined') THEN 'Failed'
+            ELSE 'Unknown'
+        END AS transaction_status_category,
         
         CASE 
-            WHEN DAYOFWEEK(order_date) IN (0, 6) THEN 'Weekend'
-            ELSE 'Weekday'
-        END AS day_type,
-        
-        -- Order Status
-        order_status,
-        
-        -- BUSINESS LOGIC: Status categories
-        CASE 
-            WHEN order_status IN ('Completed', 'Delivered') THEN TRUE
+            WHEN t.transaction_status = 'approved' THEN TRUE
             ELSE FALSE
-        END AS is_completed,
+        END AS is_successful,
         
         CASE 
-            WHEN order_status IN ('Cancelled', 'Returned') THEN TRUE
+            WHEN t.transaction_status IN ('failed', 'declined') THEN TRUE
             ELSE FALSE
-        END AS is_cancelled,
+        END AS is_failed,
+        
+        -- Transaction Type Flags
+        CASE WHEN t.transaction_type = 'payment' THEN TRUE ELSE FALSE END AS is_payment,
+        CASE WHEN t.transaction_type = 'refund' THEN TRUE ELSE FALSE END AS is_refund,
+        
+        -- Amount with direction (negative for refunds)
+        CASE 
+            WHEN t.transaction_type = 'refund' THEN -1 * ABS(t.transaction_amount)
+            ELSE t.transaction_amount
+        END AS signed_amount,
+        
+        -- Time between order and transaction
+        DATEDIFF(minute, o.order_date, t.transaction_date) AS minutes_from_order_to_transaction,
+        DATEDIFF(hour, o.order_date, t.transaction_date) AS hours_from_order_to_transaction,
+        DATEDIFF(day, o.order_date, t.transaction_date) AS days_from_order_to_transaction,
         
         CASE 
-            WHEN order_status IN ('Completed', 'Delivered') THEN 'Successful'
-            WHEN order_status IN ('Cancelled', 'Returned') THEN 'Unsuccessful'
-            ELSE 'In Progress'
-        END AS order_outcome,
+            WHEN DATEDIFF(minute, o.order_date, t.transaction_date) <= 5 THEN 'Immediate'
+            WHEN DATEDIFF(minute, o.order_date, t.transaction_date) <= 60 THEN 'Fast'
+            WHEN DATEDIFF(hour, o.order_date, t.transaction_date) <= 24 THEN 'Same Day'
+            WHEN DATEDIFF(day, o.order_date, t.transaction_date) <= 7 THEN 'Within Week'
+            ELSE 'Delayed'
+        END AS transaction_timing,
         
-        -- Financial Amounts
-        subtotal_amount,
-        tax_amount,
-        shipping_amount,
-        total_amount,
+        -- Extract date parts
+        DATE_TRUNC('month', t.transaction_date) AS transaction_month,
+        DATE_TRUNC('week', t.transaction_date) AS transaction_week,
+        DAYOFWEEK(t.transaction_date) AS day_of_week,
+        HOUR(t.transaction_date) AS hour_of_day,
         
-        -- BUSINESS LOGIC: Financial calculations
-        ROUND((tax_amount / NULLIF(subtotal_amount, 0)) * 100, 2) AS effective_tax_rate,
-        ROUND((shipping_amount / NULLIF(subtotal_amount, 0)) * 100, 2) AS shipping_percentage,
-        subtotal_amount + tax_amount + shipping_amount AS calculated_total,
-        
-        -- BUSINESS LOGIC: Verify totals match
-        ABS(total_amount - (subtotal_amount + tax_amount + shipping_amount)) < 0.01 AS is_total_accurate,
-        
-        -- Order Details
-        item_count,
-        items_detail,
-        
-        -- BUSINESS LOGIC: Average item price
-        ROUND(subtotal_amount / NULLIF(item_count, 0), 2) AS avg_item_price,
-        
-        -- BUSINESS LOGIC: Order value categories
+        -- Transaction size category
         CASE 
-            WHEN total_amount < 25 THEN 'Micro'
-            WHEN total_amount < 50 THEN 'Small'
-            WHEN total_amount < 100 THEN 'Medium'
-            WHEN total_amount < 250 THEN 'Large'
-            WHEN total_amount < 500 THEN 'Very Large'
-            ELSE 'Premium'
-        END AS order_value_tier,
-        
-        -- BUSINESS LOGIC: Order size categories
-        CASE 
-            WHEN item_count = 1 THEN 'Single Item'
-            WHEN item_count BETWEEN 2 AND 3 THEN 'Few Items'
-            WHEN item_count BETWEEN 4 AND 7 THEN 'Multiple Items'
-            WHEN item_count BETWEEN 8 AND 15 THEN 'Many Items'
-            ELSE 'Bulk Order'
-        END AS order_size_category,
-        
-        -- BUSINESS LOGIC: Free shipping flag
-        CASE 
-            WHEN shipping_amount = 0 THEN TRUE
-            ELSE FALSE
-        END AS is_free_shipping,
-        
-        -- Payment & Shipping
-        payment_method,
-        shipping_method,
-        
-        -- BUSINESS LOGIC: Payment type categories
-        CASE 
-            WHEN payment_method IN ('Credit Card', 'Debit Card') THEN 'Card'
-            WHEN payment_method IN ('PayPal', 'Apple Pay', 'Google Pay') THEN 'Digital Wallet'
-            WHEN payment_method = 'Bank Transfer' THEN 'Bank Transfer'
-            ELSE 'Other'
-        END AS payment_type,
+            WHEN t.transaction_amount < 50 THEN 'Small'
+            WHEN t.transaction_amount < 100 THEN 'Medium'
+            WHEN t.transaction_amount < 500 THEN 'Large'
+            ELSE 'Extra Large'
+        END AS transaction_size,
         
         -- Metadata
-        generated_at,
-        loaded_at,
-        batch_id,
-        source_system
+        t.generated_at,
+        t.loaded_at,
+        t.batch_id,
+        t.source_system
         
-    FROM transactions
+    FROM transactions t
+    LEFT JOIN orders o ON t.source_order_id = o.source_order_id
 )
 
-SELECT * FROM enriched
+SELECT * FROM transformed
+

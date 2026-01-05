@@ -6,58 +6,26 @@ sources:
     database: ecommerce_dw
     schema: raw
     tables:
-      - name: products
+      - name: raw_products
         description: Products from DummyJSON API
-        columns:
-          - name: product_id
-            description: Unique product identifier
-            tests:
-              - not_null
-              - unique
-          - name: product_name
-            description: Product name
-          - name: price
-            description: Product price
-          - name: loaded_at
-            description: Timestamp when loaded into warehouse
       
-      - name: customers
+      - name: raw_customers
         description: Generated customer data
-        columns:
-          - name: customer_id
-            description: Unique customer identifier
-            tests:
-              - not_null
-              - unique
-          - name: email
-            description: Customer email
-            tests:
-              - not_null
-          - name: first_name
-            description: Customer first name
-          - name: last_name
-            description: Customer last name
       
-      - name: transactions
-        description: Generated transaction data
-        columns:
-          - name: transaction_id
-            description: Unique transaction identifier
-            tests:
-              - not_null
-              - unique
-          - name: order_id
-            description: Order identifier
-          - name: customer_id
-            description: Foreign key to customers
-            tests:
-              - not_null
+      - name: raw_orders
+        description: Generated order data
+
+      - name: raw_order_items
+        description: Order line items
+
+      - name: raw_transactions
+        description: Payment transactions
 
 models:
   - name: stg_products
     description: Cleaned and typed product data from raw layer
     columns:
-      - name: product_id
+      - name: source_product_id
         description: Unique product identifier
         tests:
           - not_null
@@ -74,8 +42,8 @@ models:
   - name: stg_customers
     description: Cleaned and typed customer data from raw layer
     columns:
-      - name: customer_id
-        description: Unique customer identifier
+      - name: source_customer_id
+        description: Unique customer identifier from source
         tests:
           - not_null
           - unique
@@ -89,19 +57,71 @@ models:
   - name: stg_transactions
     description: Cleaned and typed transaction data from raw layer
     columns:
-      - name: transaction_id
+      - name: source_transaction_id
         description: Unique transaction identifier
         tests:
           - not_null
           - unique
-      - name: order_id
+      - name: source_order_id
         description: Order identifier
         tests:
           - not_null
-      - name: customer_id
-        description: Foreign key to customers
+      - name: transaction_date
+        description: Transaction date
         tests:
           - not_null
-          - relationships:
-              to: ref('stg_customers')
-              field: customer_id
+      - name: transaction_amount
+        description: Transaction amount
+        tests:
+          - not_null
+
+  - name: stg_orders
+    description: Cleaned and typed order data from raw layer
+    columns:
+      - name: source_order_id
+        description: Unique order identifier
+        tests:
+          - not_null
+          - unique
+      - name: source_customer_id
+        description: Customer identifier
+        tests:
+          - not_null
+      - name: order_date
+        description: Order date
+        tests:
+          - not_null
+      - name: total_amount
+        description: Total order amount
+        tests:
+          - not_null
+  
+  - name: stg_order_items
+    description: Cleaned and typed order item data from raw layer
+    columns:
+      - name: source_order_item_id
+        description: Unique order item identifier
+        tests:
+          - not_null
+          - unique
+      - name: source_order_id
+        description: Order identifier
+        tests:
+          - not_null
+      - name: source_product_id
+        description: Product identifier
+        tests:
+          - not_null
+      - name: quantity
+        description: Quantity
+        tests:
+          - not_null
+      - name: unit_price
+        description: Unit price (decimal)
+        tests:
+          - not_null
+      - name: total_price
+        description: Total line item price (decimal)
+        tests:
+          - not_null
+

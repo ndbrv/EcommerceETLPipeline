@@ -1,37 +1,33 @@
 {{
     config(
         materialized='table',
-        tags=['staging', 'transactions']
+        tags=['staging', 'orders']
     )
 }}
 
 WITH raw AS (
-    SELECT * FROM {{ source('raw', 'raw_transactions') }}
+    SELECT * FROM {{ source('raw', 'raw_orders') }}
 ),
 
 cleaned AS (
     SELECT
         -- Primary Keys
         id,
-        source_transaction_id,
         source_order_id,
-        
-        -- Transaction Details
-        transaction_type,
-        transaction_status,
+        source_customer_id,
         
         -- Date/Time
-        transaction_date,
-       
+        order_date,
+        
+        -- Order Status
+        order_status,
         
         -- Financial Amount (convert FLOAT to DECIMAL)
-        amount::DECIMAL(10,2) AS transaction_amount,
+        total_amount::DECIMAL(10,2) AS total_amount,
         
-        -- Payment Details
+        -- Payment & Shipping
         payment_method,
-        processor_name AS payment_processor,
-        processor_transaction_id,
-        card_last_four,
+        shipping_address,
         
         -- Metadata
         generated_at,
