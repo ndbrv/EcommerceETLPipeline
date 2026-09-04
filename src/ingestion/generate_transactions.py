@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from faker import Faker
 import random
 import sys
+import json
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 from dotenv import load_dotenv
@@ -52,7 +53,7 @@ class TransactionDataGenerator:
         # Load products
         print("   Loading products...")
         self.products_df = pd.read_sql(
-            "SELECT product_id, product_name, category, price, stock FROM source.products",
+            "SELECT product_id, product_name, category, price, stock FROM raw.raw_products",
             conn
         )
         print(f"Loaded {len(self.products_df)} products")
@@ -60,7 +61,7 @@ class TransactionDataGenerator:
         # Load customers
         print("Loading customers...")
         self.customers_df = pd.read_sql(
-            "SELECT customer_id, customer_segment, is_active FROM source.customers",
+            "SELECT customer_id, customer_segment, is_active FROM raw.raw_customers",
             conn
         )
         print(f" Loaded {len(self.customers_df)} customers")
@@ -116,11 +117,11 @@ class TransactionDataGenerator:
                 subtotal += item_total
                 
                 order_items.append({
-                    'product_id': product_id,
-                    'product_name': product['PRODUCT_NAME'],
-                    'quantity': quantity,
-                    'unit_price': item_price,
-                    'item_total': item_total
+                    "product_id": product_id,
+                    "product_name": product['PRODUCT_NAME'],
+                    "quantity": quantity,
+                    "unit_price": item_price,
+                    "item_total": item_total
                 })
             
             # Calculate tax and shipping
@@ -165,7 +166,7 @@ class TransactionDataGenerator:
                 
                 # Order details
                 'NUM_ITEMS': num_items,
-                'ITEMS_DETAIL': str(order_items),  # Store as JSON string
+                'ITEMS_DETAIL': json.dumps(order_items),  # Store as JSON string
                 
                 # Payment info
                 'PAYMENT_METHOD': payment_method,
@@ -186,6 +187,32 @@ class TransactionDataGenerator:
         print(f"✅ Generated {len(df):,} transactions")
         
         return df
+
+    def extract_order_items(self, transactions_df):
+        """Extract order items from transactions into separate table"""
+        
+        order_items = []
+        
+        for _, txn in transactions_df.iterrows():
+            # Parse items JSON
+            items = json.loads(txn['ITEMS_DETAIL'])
+            
+            for idx, item in enumerate(items):
+                order_item = {
+                    'ORDER_ITEM_ID': _*idx,
+                    'TRANSACTION_ID': txn['TRANSACTION_ID'],
+                    'ORDER_ID': txn['ORDER_ID'],
+                    'PRODUCT_ID': item['product_id'],
+                    'PRODUCT_NAME': item['product_name'],
+                    'QUANTITY': item['quantity'],
+                    'UNIT_PRICE': item['unit_price'],
+                    'ITEM_TOTAL': item['item_total'],
+                    'GENERATED_AT': txn['GENERATED_AT'],
+                    'SOURCE': txn['SOURCE']
+                }
+                order_items.append(order_item)
+        
+        return pd.DataFrame(order_items)
     
     def display_statistics(self, df):
         """Show transaction data statistics"""
@@ -214,17 +241,17 @@ class TransactionDataGenerator:
     def save_local(self, df):
         """Save DataFrame to local parquet file"""
         date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        os.makedirs('data/source', exist_ok=True)
-        filepath = f'data/source/transactions_{date_str}.parquet'
+        os.makedirs('data/raw', exist_ok=True)
+        filepath = f'data/raw/transactions_{date_str}.parquet'
         
         df.to_parquet(filepath, index=False)
         print(f"\n💾 Saved local backup to: {filepath}")
         
         return filepath
     
-    def load_to_snowflake(self, df):
+    def load_to_snowflake_transactions(self, df):
         """Load DataFrame to Snowflake"""
-        print(f"\n Loading to Snowflake source layer...")
+        print(f"\n Loading to Snowflake raw layer...")
         
         conn = self.get_snowflake_connection()
 
@@ -234,8 +261,35 @@ class TransactionDataGenerator:
         success, nchunks, nrows, _ = write_pandas(
             conn=conn,
             df=df,
-            table_name='transactions',
-            schema='source',
+            table_name='raw_transactions',
+            schema='raw',
+            database=self.sf_database,
+            auto_create_table=True,
+            overwrite=False,
+            quote_identifiers=False
+        )
+        
+        conn.close()
+        
+        if success:
+            print(f"✅ Loaded {nrows:,} rows to sourec.transactions")
+        
+        return success
+
+    def load_to_snowflake_order_items(self, df):
+        """Load DataFrame to Snowflake"""
+        print(f"\n Loading to Snowflake raw layer...")
+        
+        conn = self.get_snowflake_connection()
+
+        # Add metadata
+        df['BATCH_ID'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        
+        success, nchunks, nrows, _ = write_pandas(
+            conn=conn,
+            df=df,
+            table_name='raw_order_items',
+            schema='raw',
             database=self.sf_database,
             auto_create_table=True,
             overwrite=False,
@@ -265,9 +319,17 @@ class TransactionDataGenerator:
         if save_local:
             self.save_local(df)
         
+        # Extract order items
+        order_items_df = self.extract_order_items(df)
+        
+        # Save local backup
+        if save_local:
+            self.save_local(order_items_df)
+        
         # Load to Snowflake
         if load_to_snowflake:
-            self.load_to_snowflake(df)
+            self.load_to_snowflake_transactions(df)
+            self.load_to_snowflake_order_items(order_items_df)
         
         print("\n" + "="*70)
         print(" TRANSACTION GENERATION COMPLETE!")

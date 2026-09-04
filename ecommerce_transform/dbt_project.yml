@@ -12,7 +12,7 @@ profile: 'ecommerce_transform'
 quoting:
   database: false
   schema: false
-  identifier: true
+  identifier: false
 
 # These configurations specify where dbt should look for different types of files.
 # The `model-paths` config, for example, states that models in this project can be

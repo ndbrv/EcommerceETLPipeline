@@ -40,7 +40,7 @@ class DummyJSONIngestion:
         cleaned = []
         for product in products:
             cleaned.append({
-                'PRODUCT_ID': product.get('id'),
+                'SOURCE_PRODUCT_ID': product.get('id'),
                 'PRODUCT_NAME': product.get('title'),
                 'BRAND': product.get('brand'),
                 'CATEGORY': product.get('category'),
@@ -74,7 +74,7 @@ class DummyJSONIngestion:
         print(f"   Total products: {len(df)}")
         
         print(f"\n📋 Sample data:")
-        print(df[['PRODUCT_ID', 'PRODUCT_NAME', 'BRAND', 'CATEGORY', 'PRICE', 'RATING', 'STOCK']].head(10))
+        print(df[['SOURCE_PRODUCT_ID', 'PRODUCT_NAME', 'BRAND', 'CATEGORY', 'PRICE', 'RATING', 'STOCK']].head(10))
         
         return df
     
@@ -99,8 +99,8 @@ class DummyJSONIngestion:
         
         success = sf.load_dataframe(
             df=df,
-            table_name='PRODUCTS',
-            schema='SOURCE',
+            table_name='RAW_PRODUCTS',
+            schema='RAW',
             overwrite=False  # Append mode - never delete raw data
         )
         

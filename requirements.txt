@@ -1,0 +1,21 @@
+# Core data processing
+snowflake-connector-python==3.6.0
+pandas==2.1.2
+pyarrow==13.0.0
+faker==19.6.0
+python-dotenv==1.0.0
+requests==2.31.0
+
+# DBT and Airflow integration
+dbt-snowflake==1.10.4
+astronomer-cosmos==1.7.0
+apache-airflow-providers-snowflake==5.6.1
+
+# Kafka (for streaming)
+kafka-python==2.0.2
+confluent-kafka==2.3.0
+
+# Snowflake Streaming
+snowflake-ingest==2.1.0
+cryptography==41.0.7
+
