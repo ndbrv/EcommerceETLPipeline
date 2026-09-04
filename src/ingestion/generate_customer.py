@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 from dotenv import load_dotenv
+from utils.id_manager import get_id_manager
 
 load_dotenv()
 
@@ -48,9 +49,15 @@ class CustomerDataGenerator:
         """Generate fake customer records"""
         print(f" Generating {self.num_customers:,} fake customers...")
         
+        # Get ID manager and next batch of customer IDs
+        id_manager = get_id_manager()
+        customer_ids = id_manager.get_next_batch('customer', self.num_customers)
+        
+        print(f"📊 Customer IDs: {customer_ids[0]:,} to {customer_ids[-1]:,}")
+        
         customers = []
         
-        for i in range(1, self.num_customers + 1):
+        for i, customer_id in enumerate(customer_ids, start=1):
             # Random registration date (last 3 years)
             registration_date = self.fake.date_time_between(
                 start_date='-3y',
@@ -81,7 +88,7 @@ class CustomerDataGenerator:
                 segment = 'Established'
             
             customer = {
-                'CUSTOMER_ID': i,
+                'SOURCE_CUSTOMER_ID': customer_id,
                 'FIRST_NAME': self.fake.first_name(),
                 'LAST_NAME': self.fake.last_name(),
                 'EMAIL': self.fake.email(),
@@ -124,6 +131,9 @@ class CustomerDataGenerator:
         df = pd.DataFrame(customers)
         print(f"Generated {len(df):,} customers")
         
+        # Save ID manager state
+        id_manager.save()
+        
         return df
     
     def display_statistics(self, df):
@@ -144,7 +154,7 @@ class CustomerDataGenerator:
         print(df['STATE'].value_counts().head(10))
         
         print(f"\n📋 Sample data:")
-        print(df[['CUSTOMER_ID', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'CITY', 'STATE', 'CUSTOMER_SEGMENT']].head(10))
+        print(df[['SOURCE_CUSTOMER_ID', 'FIRST_NAME', 'LAST_NAME', 'EMAIL', 'CITY', 'STATE', 'CUSTOMER_SEGMENT']].head(10))
     
     def save_local(self, df):
         """Save DataFrame to local parquet file"""
@@ -159,18 +169,18 @@ class CustomerDataGenerator:
     
     def load_to_snowflake(self, df):
         """Load DataFrame to Snowflake"""
-        print(f"\n📤 Loading to Snowflake Source layer...")
+        print(f"\n📤 Loading to Snowflake Raw layer...")
         
         conn = self.get_snowflake_connection()
         
-        # Add metadata
+        # Add metadataf
         df['BATCH_ID'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         
         success, nchunks, nrows, _ = write_pandas(
             conn=conn,
             df=df,
-            table_name='customers',
-            schema='source',
+            table_name='raw_customers',
+            schema='raw',
             database=self.sf_database,
             auto_create_table=True,
             overwrite=False,
@@ -208,6 +218,9 @@ class CustomerDataGenerator:
         print("✅ CUSTOMER GENERATION COMPLETE!")
         print(f"   Total customers: {len(df):,}")
         print("="*70)
+        
+        # Show ID manager status
+        get_id_manager().status()
         
         return df
 

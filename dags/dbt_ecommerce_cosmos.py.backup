@@ -1,0 +1,207 @@
+"""
+DBT Ecommerce Pipeline using Astronomer Cosmos
+This DAG automatically generates Airflow tasks from dbt models with proper dependencies.
+"""
+
+from datetime import datetime, timedelta
+from pathlib import Path
+import os
+
+from airflow import DAG
+from airflow.operators.empty import EmptyOperator
+from airflow.operators.python import PythonOperator
+
+from cosmos import DbtDag, ProjectConfig, ProfileConfig, ExecutionConfig
+from cosmos.profiles import SnowflakeUserPasswordProfileMapping
+
+# Paths
+DBT_PROJECT_PATH = Path("/opt/airflow/ecommerce_transform")
+DBT_EXECUTABLE_PATH = "/home/airflow/.local/bin/dbt"
+
+# Default arguments
+default_args = {
+    "owner": "data_team",
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
+    "email_on_failure": False,
+    "email_on_retry": False,
+}
+
+
+def run_data_generation(**context):
+    """Run data generation scripts before dbt"""
+    import sys
+    sys.path.insert(0, '/opt/airflow/src')
+    
+    from ingestion.generate_customer import CustomerGenerator
+    from ingestion.generate_daily_orders_transactions import DailyOrdersTransactionsGenerator
+    
+    # Generate customers (if needed)
+    print("Generating customer data...")
+    customer_gen = CustomerGenerator(num_customers=10)
+    customer_gen.run()
+    
+    # Generate daily orders and transactions
+    print("Generating daily orders and transactions...")
+    order_gen = DailyOrdersTransactionsGenerator(num_orders=50)
+    order_gen.run()
+    
+    print("Data generation complete!")
+
+
+# Create the main Cosmos DAG for the entire dbt project
+dbt_ecommerce_dag = DbtDag(
+    # Project config
+    project_config=ProjectConfig(
+        dbt_project_path=DBT_PROJECT_PATH,
+    ),
+    
+    # Profile config - uses Airflow Snowflake connection (NO profiles.yml needed!)
+    profile_config=ProfileConfig(
+        profile_name="ecommerce_transform",
+        target_name="dev",
+        profile_mapping=SnowflakeUserPasswordProfileMapping(
+            conn_id="snowflake_default",  # Set this in Airflow UI: Admin → Connections
+            profile_args={
+                "database": "ECOMMERCE_DW",
+                "schema": "staging",  # Default schema (will be overridden by dbt models)
+            },
+        ),
+    ),
+    
+    # Execution config
+    execution_config=ExecutionConfig(
+        dbt_executable_path=DBT_EXECUTABLE_PATH,
+    ),
+    
+    # Airflow DAG parameters
+    dag_id="dbt_ecommerce_full_pipeline",
+    start_date=datetime(2026, 1, 1),
+    schedule_interval="0 3 * * *",  # 3 AM daily
+    catchup=False,
+    default_args=default_args,
+    description="Full ecommerce dbt pipeline with Cosmos - runs all models (staging, transformation, curated)",
+    tags=["dbt", "ecommerce", "cosmos", "full_pipeline"],
+    
+    # Operator args - passed to all dbt operators
+    operator_args={
+        "install_deps": True,  # Run dbt deps before running
+        "full_refresh": False,
+    },
+)
+
+
+# If you want to add upstream tasks (like data generation), create a traditional DAG
+with DAG(
+    dag_id="dbt_ecommerce_with_ingestion",
+    start_date=datetime(2026, 1, 1),
+    schedule_interval="0 3 * * *",  # 3 AM daily
+    catchup=False,
+    default_args=default_args,
+    description="Ecommerce pipeline: data generation → dbt transformation",
+    tags=["dbt", "ecommerce", "cosmos", "with_ingestion"],
+) as dag_with_ingestion:
+    
+    start = EmptyOperator(task_id="start")
+    
+    # Data generation task
+    generate_data = PythonOperator(
+        task_id="generate_source_data",
+        python_callable=run_data_generation,
+    )
+    
+    # dbt staging layer
+    dbt_staging = DbtDag(
+        project_config=ProjectConfig(
+            dbt_project_path=DBT_PROJECT_PATH,
+        ),
+        profile_config=ProfileConfig(
+            profile_name="ecommerce_transform",
+            target_name="dev",
+            profile_mapping=SnowflakeUserPasswordProfileMapping(
+                conn_id="snowflake_default",
+                profile_args={
+                    "database": "ECOMMERCE_DW",
+                    "schema": "STAGING",
+                },
+            ),
+        ),
+        execution_config=ExecutionConfig(
+            dbt_executable_path=DBT_EXECUTABLE_PATH,
+        ),
+        # Task group config
+        dag_id="dbt_staging",
+        start_date=datetime(2026, 1, 1),
+        schedule_interval=None,  # Triggered by parent DAG
+        catchup=False,
+        operator_args={
+            "select": "staging",  # Only staging models
+            "install_deps": True,
+        },
+    )
+    
+    # dbt transformation layer
+    dbt_transformation = DbtDag(
+        project_config=ProjectConfig(
+            dbt_project_path=DBT_PROJECT_PATH,
+        ),
+        profile_config=ProfileConfig(
+            profile_name="ecommerce_transform",
+            target_name="dev",
+            profile_mapping=SnowflakeUserPasswordProfileMapping(
+                conn_id="snowflake_default",
+                profile_args={
+                    "database": "ECOMMERCE_DW",
+                    "schema": "TRANSFORM",
+                },
+            ),
+        ),
+        execution_config=ExecutionConfig(
+            dbt_executable_path=DBT_EXECUTABLE_PATH,
+        ),
+        dag_id="dbt_transformation",
+        start_date=datetime(2026, 1, 1),
+        schedule_interval=None,
+        catchup=False,
+        operator_args={
+            "select": "transformation",
+            "install_deps": False,  # Already installed in staging
+        },
+    )
+    
+    # dbt curated layer
+    dbt_curated = DbtDag(
+        project_config=ProjectConfig(
+            dbt_project_path=DBT_PROJECT_PATH,
+        ),
+        profile_config=ProfileConfig(
+            profile_name="ecommerce_transform",
+            target_name="dev",
+            profile_mapping=SnowflakeUserPasswordProfileMapping(
+                conn_id="snowflake_default",
+                profile_args={
+                    "database": "ECOMMERCE_DW",
+                    "schema": "CURATED",
+                },
+            ),
+        ),
+        execution_config=ExecutionConfig(
+            dbt_executable_path=DBT_EXECUTABLE_PATH,
+        ),
+        dag_id="dbt_curated",
+        start_date=datetime(2026, 1, 1),
+        schedule_interval=None,
+        catchup=False,
+        operator_args={
+            "select": "curated",
+            "install_deps": False,
+        },
+    )
+    
+    end = EmptyOperator(task_id="end")
+    
+    # Define dependencies
+    # Note: Cosmos DAGs within a parent DAG need special handling
+    # For now, we'll use simple orchestration
+    start >> generate_data >> end
+
